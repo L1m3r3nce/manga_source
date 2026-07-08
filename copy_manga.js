@@ -4,7 +4,7 @@ class CopyManga extends ComicSource {
 
     key = "copy_manga"
 
-    version = "1.4.4"
+    version = "1.4.5"
 
     minAppVersion = "1.6.0"
 
@@ -20,6 +20,10 @@ class CopyManga extends ComicSource {
     // request_id 缓存，避免每次請求都调用广告 API
     _reqIdCache = null;
     _reqIdCacheTime = 0;
+
+    // 设备指纹自动轮换状态
+    _fingerprintCreatedAt = 0;
+    _fingerprintRotationCount = 0;
 
     // ============================================================
     //  Utility helpers
@@ -80,6 +84,54 @@ class CopyManga extends ComicSource {
 
         // 在可能的 sleep 之后重新获取时间，确保时间戳准确
         this._requestTimestamps.push(Date.now());
+
+        // 每次请求时检查是否需要轮换设备指纹
+        this._maybeRotateFingerprints();
+    }
+
+    // ============================================================
+    //  Device fingerprint auto-rotation
+    // ============================================================
+
+    /**
+     * 定时自动轮换设备指纹。
+     * 默认每 20-40 分钟随机轮换一次，模拟真实用户换设备/重装APP的行为。
+     * 初次使用时记录时间，后续按间隔自动轮换。
+     */
+    _maybeRotateFingerprints() {
+        const now = Date.now();
+
+        // 首次使用，记录当前指纹的时间戳
+        if (this._fingerprintCreatedAt === 0) {
+            if (this.loadData("_deviceinfo")) {
+                this._fingerprintCreatedAt = now;
+            }
+            return;
+        }
+
+        // 随机轮换间隔：20-40 分钟（避免固定间隔被检测）
+        const rotateInterval = randomInt(20 * 60 * 1000, 40 * 60 * 1000);
+
+        if (now - this._fingerprintCreatedAt > rotateInterval) {
+            this._rotateFingerprints();
+        }
+    }
+
+    /**
+     * 强制立即轮换设备指纹。
+     * 在收到 210 "破解版本" 错误时调用，立即更换身份。
+     */
+    _rotateFingerprints() {
+        this.deleteData("_deviceinfo");
+        this.deleteData("_device");
+        this.deleteData("_pseudoid");
+        this._fingerprintCreatedAt = Date.now();
+        this._fingerprintRotationCount++;
+        // 指纹更换后，request_id 也应当刷新
+        this._reqIdCache = null;
+        this._reqIdCacheTime = 0;
+        // 重置请求计数器，以新身份开始
+        this._requestTimestamps = [];
     }
 
     // ============================================================
@@ -898,6 +950,16 @@ class CopyManga extends ComicSource {
             ])
 
             if (results[0].status !== 200) {
+                // 210 破解版检测：轮换指纹后抛出，让上层重试
+                if (results[0].status === 210) {
+                    try {
+                        let body = JSON.parse(results[0].body);
+                        if (body.message && (body.message.includes("破解版本") || body.message.includes("copy3000"))) {
+                            this._rotateFingerprints();
+                            console.log(`loadInfo cracked version detected, rotated fingerprints (rotation #${this._fingerprintRotationCount})`);
+                        }
+                    } catch (e) {}
+                }
                 throw `Invalid status code: ${results[0].status}`;
             }
 
@@ -954,27 +1016,36 @@ class CopyManga extends ComicSource {
                     );
 
                     if (res.status === 210) {
-                        // 210 indicates too frequent access, extract wait time
+                        // 解析 210 消息，判断是频率限制还是破解版检测
+                        let isCrackedDetected = false;
                         let waitTime = 40000; // Default wait time 40s
                         try {
                             let responseBody = JSON.parse(res.body);
-                            if (
-                                responseBody.message &&
-                                responseBody.message.includes("Expected available in")
-                            ) {
-                                let match = responseBody.message.match(/(\d+)\s*seconds/);
+                            let msg = responseBody.message || "";
+                            if (msg.includes("破解版本") || msg.includes("copy3000")) {
+                                // 服务端检测到"破解版本" — 立即轮换指纹重试
+                                isCrackedDetected = true;
+                                waitTime = 5000; // 只等 5 秒即可重试
+                                this._rotateFingerprints();
+                                console.log(`Chapter${epId} cracked version detected, rotated fingerprints (rotation #${this._fingerprintRotationCount})`);
+                            } else if (msg.includes("Expected available in")) {
+                                let match = msg.match(/(\d+)\s*seconds/);
                                 if (match && match[1]) {
                                     waitTime = parseInt(match[1]) * 1000;
                                 }
                             }
                         } catch (e) {
-                            console.log(
-                                "Unable to parse wait time, using default wait time 40s"
-                            );
+                            console.log("Unable to parse 210 response, using default wait time 40s");
                         }
-                        // 对等待时间加入 20% 随机抖动，避免多设备同步重试
+
+                        if (isCrackedDetected && attempt < maxAttempts - 1) {
+                            // 破解版检测 + 还有重试次数 → 短等后用新指纹重试
+                            await new Promise((resolve) => setTimeout(resolve, waitTime));
+                            throw "Retry";
+                        }
+
+                        // 频率限制或最后一次重试：使用指数退避
                         let jitteredWait = CopyManga.jitter(waitTime, 0.2);
-                        // 指数退避：每次重试比上次多等 50%
                         let backoffMultiplier = 1 + (attempt * 0.5);
                         let finalWait = Math.floor(jitteredWait * backoffMultiplier);
 
@@ -1033,6 +1104,13 @@ class CopyManga extends ComicSource {
 
             if (res.status !== 200) {
                 if (res.status === 210) {
+                    // 检测破解版 210 并轮换指纹
+                    try {
+                        let body = JSON.parse(res.body);
+                        if (body.message && (body.message.includes("破解版本") || body.message.includes("copy3000"))) {
+                            this._rotateFingerprints();
+                        }
+                    } catch (e) {}
                     throw "210：注冊用戶一天可以發5條評論"
                 }
                 throw `Invalid status code: ${res.status}`;
@@ -1275,6 +1353,9 @@ class CopyManga extends ComicSource {
                 this._reqIdCacheTime = 0;
                 // 清除请求时间戳记录
                 this._requestTimestamps = [];
+                // 重置指纹轮换计数器
+                this._fingerprintCreatedAt = 0;
+                this._fingerprintRotationCount = 0;
                 this.refreshAppApi();
             }
         },
