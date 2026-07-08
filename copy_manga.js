@@ -4,16 +4,100 @@ class CopyManga extends ComicSource {
 
     key = "copy_manga"
 
-    version = "1.4.1"
+    version = "1.4.3"
 
     minAppVersion = "1.6.0"
 
     url = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/copy_manga.js"
 
+    // ============================================================
+    //  Anti-blocking: rate limiting state
+    // ============================================================
+
+    // 滑动窗口：记录最近 60 秒内的请求时间戳
+    _requestTimestamps = [];
+
+    // request_id 缓存，避免每次請求都调用广告 API
+    _reqIdCache = null;
+    _reqIdCacheTime = 0;
+
+    // ============================================================
+    //  Utility helpers
+    // ============================================================
+
+    /** 异步休眠 ms 毫秒 */
+    static async sleep(ms) {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    /**
+     * 在 baseMs 基础上附加 ±rangePercent 的随机抖动
+     * 例如 jitter(1000, 0.3) => 700~1300ms
+     */
+    static jitter(baseMs, rangePercent) {
+        rangePercent = rangePercent || 0.3;
+        const range = Math.floor(baseMs * rangePercent);
+        return baseMs + randomInt(-range, range);
+    }
+
+    // ============================================================
+    //  Rate limiter — 在每次 API 请求前调用
+    // ============================================================
+
+    /**
+     * 基于滑动窗口的请求频率控制。
+     * - 相邻请求间隔 >= 500ms（带随机抖动）
+     * - 60 秒内超过 30 次请求时自动降速
+     * - 超过 50 次请求时进一步降速
+     */
+    async _rateLimit() {
+        const now = Date.now();
+        const MIN_GAP = 500;
+
+        // 清理 60 秒之前的时间戳
+        const cutoff = now - 60000;
+        this._requestTimestamps = this._requestTimestamps.filter(t => t > cutoff);
+
+        // 确保相邻请求之间有最小间隔
+        if (this._requestTimestamps.length > 0) {
+            const lastTime = this._requestTimestamps[this._requestTimestamps.length - 1];
+            const elapsed = now - lastTime;
+            if (elapsed < MIN_GAP) {
+                const waitMs = (MIN_GAP - elapsed) + randomInt(0, 300);
+                await CopyManga.sleep(waitMs);
+            }
+        }
+
+        // 根据窗口内请求数量，按比例增加延迟
+        const count = this._requestTimestamps.length;
+        if (count > 50) {
+            // 超过 50 次/分钟 — 大幅降速
+            await CopyManga.sleep(randomInt(3000, 6000));
+        } else if (count > 30) {
+            // 超过 30 次/分钟 — 中度降速
+            await CopyManga.sleep(randomInt(1000, 2500));
+        }
+
+        // 在可能的 sleep 之后重新获取时间，确保时间戳准确
+        this._requestTimestamps.push(Date.now());
+    }
+
+    // ============================================================
+    //  Request ID — 带缓存，减少广告 API 调用
+    // ============================================================
+
     async getReqID() {
         if (this.copyRegion === "0") {
             return "";
         }
+
+        // 缓存 30 分钟（广告 API 的 request_id 通常有较长有效期）
+        const now = Date.now();
+        const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+        if (this._reqIdCache && (now - this._reqIdCacheTime) < CACHE_TTL) {
+            return this._reqIdCache;
+        }
+
         const reqIdUrl = "https://marketing.aiacgn.com/api/v2/adopr/query3/?format=json&ident=200100001";
         let reqId = "";
         try {
@@ -22,15 +106,42 @@ class CopyManga extends ComicSource {
             if (response.status === 200) {
                 const data = JSON.parse(response.body);
                 reqId = data.results.request_id;
+                // 只有成功获取时才更新缓存
+                this._reqIdCache = reqId;
+                this._reqIdCacheTime = now;
             }
         } catch (e) {
+            // 如果请求失败但有旧缓存，继续使用旧缓存
+            if (this._reqIdCache) {
+                return this._reqIdCache;
+            }
         }
         return reqId;
     }
 
+    // ============================================================
+    //  App version / secret — 可从设置中覆盖
+    // ============================================================
+
+    get appVersion() {
+        return this.loadSetting('app_version') || '3.0.9';
+    }
+
+    get appSecret() {
+        return this.loadSetting('app_secret') || "M2FmMDg1OTAzMTEwMzJlZmUwNjYwNTUwYTA1NjNhNTM=";
+    }
+
+    get appUmstring() {
+        return this.loadSetting('app_umstring') || "b4c89ca4104ea9a97750314d791520ac";
+    }
+
+    // ============================================================
+    //  Headers
+    // ============================================================
+
     get headers() {
         let token = this.loadData("token");
-        let secret = "M2FmMDg1OTAzMTEwMzJlZmUwNjYwNTUwYTA1NjNhNTM="
+        let secret = this.appSecret;
 
         let now = new Date(Date.now());
         let year = now.getFullYear();
@@ -50,20 +161,22 @@ class CopyManga extends ComicSource {
             "sha256"
         )
 
+        let ver = this.appVersion;
+
         return {
-            "User-Agent": `COPY/3.0.6`,
+            "User-Agent": `COPY/${ver}`,
             "source": "copyApp",
             "deviceinfo": this.deviceinfo,
             "dt": `${year}.${month}.${day}`,
             "platform": "3",
-            "referer": `com.copymanga.app-3.0.6`,
-            "version": "3.0.6",
+            "referer": `com.copymanga.app-${ver}`,
+            "version": ver,
             "device": this.device,
             "pseudoid": this.pseudoid,
             "Accept": "application/json",
             "region": this.copyRegion,
             "authorization": `Token${token}`,
-            "umstring": "b4c89ca4104ea9a97750314d791520ac",
+            "umstring": this.appUmstring,
             "x-auth-timestamp": ts,
             "x-auth-signature": sig,
         }
@@ -80,6 +193,10 @@ class CopyManga extends ComicSource {
     static defaultApiUrl = 'api.copy2000.online'
 
     static searchApi = "/api/kb/web/searchb/comics"
+
+    // ============================================================
+    //  Device fingerprint — 更接近真实 Android 设备
+    // ============================================================
 
     get deviceinfo() {
         let info = this.loadData("_deviceinfo");
@@ -116,10 +233,37 @@ class CopyManga extends ComicSource {
     // return this.loadSetting('platform')
     // }
 
+    /**
+     * 生成更接近真实 Android 设备的 deviceInfo。
+     * 真实 Android ID 是 16 位十六进制，这里混合多种格式增加多样性。
+     */
     static generateDeviceInfo() {
-        return `${randomInt(1000000, 9999999)}V-${randomInt(1000, 9999)}`;
+        const variant = randomInt(0, 2);
+        switch (variant) {
+            case 0: {
+                // Android ID 风格: 16 位十六进制
+                const hex = '0123456789abcdef';
+                let id = '';
+                for (let i = 0; i < 16; i++) id += hex[randomInt(0, 15)];
+                return id;
+            }
+            case 1: {
+                // 旧格式: 7位数字-V-4位数字
+                return `${randomInt(1000000, 9999999)}V-${randomInt(1000, 9999)}`;
+            }
+            case 2: {
+                // UUID 风格: 8-4-4-4-12 十六进制
+                const hex = '0123456789abcdef';
+                const seg = (n) => { let s = ''; for (let i = 0; i < n; i++) s += hex[randomInt(0, 15)]; return s; };
+                return `${seg(8)}-${seg(4)}-${seg(4)}-${seg(4)}-${seg(12)}`;
+            }
+        }
     }
 
+    /**
+     * 生成更接近真实 Android 设备的 device 标识。
+     * 混合多种格式：原格式 + 序列号风格 + MAC 地址风格
+     */
     static generateDevice() {
         function randCharA() {
             return String.fromCharCode(65 + randomInt(0, 25));
@@ -127,21 +271,40 @@ class CopyManga extends ComicSource {
         function randDigit() {
             return String.fromCharCode(48 + randomInt(0, 9));
         }
-        return (
-            randCharA() +
-            randCharA() +
-            randDigit() +
-            randCharA() + "." +
-            randDigit() +
-            randDigit() +
-            randDigit() +
-            randDigit() +
-            randDigit() +
-            randDigit() + "." +
-            randDigit() +
-            randDigit() +
-            randDigit()
-        );
+
+        const variant = randomInt(0, 2);
+        switch (variant) {
+            case 0:
+                // 原有格式: XX#X.######.###
+                return (
+                    randCharA() +
+                    randCharA() +
+                    randDigit() +
+                    randCharA() + "." +
+                    randDigit() +
+                    randDigit() +
+                    randDigit() +
+                    randDigit() +
+                    randDigit() +
+                    randDigit() + "." +
+                    randDigit() +
+                    randDigit() +
+                    randDigit()
+                );
+            case 1: {
+                // 序列号风格: 大写字母+数字混合，类似 Samsung 设备号
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let s = '';
+                for (let i = 0; i < 11; i++) s += chars[randomInt(0, chars.length - 1)];
+                return s;
+            }
+            case 2: {
+                // 带连字符的格式: XXXX-XXXX-XXXX
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                const seg = (n) => { let s = ''; for (let i = 0; i < n; i++) s += chars[randomInt(0, chars.length - 1)]; return s; };
+                return `${seg(4)}-${seg(4)}-${seg(4)}`;
+            }
+        }
     }
 
     static generatePseudoid() {
@@ -209,6 +372,8 @@ class CopyManga extends ComicSource {
             title: "拷贝漫画",
             type: "singlePageWithMultiPart",
             load: async () => {
+                await this._rateLimit();
+
                 let dataStr = await Network.get(
                     `${this.apiUrl}/api/v3/h5/homeIndex`,
                     this.headers
@@ -343,6 +508,8 @@ class CopyManga extends ComicSource {
 
     categoryComics = {
         load: async (category, param, options, page) => {
+            await this._rateLimit();
+
             let category_url;
             // 分类-排行
             if (category === "排行" || param === "ranking") {
@@ -468,6 +635,8 @@ class CopyManga extends ComicSource {
 
     search = {
         load: async (keyword, options, page) => {
+            await this._rateLimit();
+
             let author;
             if (keyword.startsWith("作者:")) {
                 author = keyword.substring("作者:".length).trim();
@@ -548,6 +717,8 @@ class CopyManga extends ComicSource {
     favorites = {
         multiFolder: false,
         addOrDelFavorite: async (comicId, folderId, isAdding) => {
+            await this._rateLimit();
+
             let is_collect = isAdding ? 1 : 0
             let token = this.loadData("token");
             let reqId = await this.getReqID();
@@ -576,6 +747,8 @@ class CopyManga extends ComicSource {
             return "ok"
         },
         loadComics: async (page, folder) => {
+            await this._rateLimit();
+
             let ordering = this.loadSetting('favorites_ordering') || '-datetime_updated';
             var res = await Network.get(
                 `${this.apiUrl}/api/v3/member/collect/comics?limit=30&offset=${(page - 1) * 30}&free_type=1&ordering=${ordering}`,
@@ -625,8 +798,12 @@ class CopyManga extends ComicSource {
 
     comic = {
         loadInfo: async (id) => {
+            await this._rateLimit();
+
             let getChapters = async (id, groups) => {
                 let fetchSingle = async (id, path) => {
+                    await this._rateLimit();
+
                     let reqId = await this.getReqID();
                     let res = await Network.get(
                         `${this.apiUrl}/api/v3/comic/${id}/group/${path}/chapters?limit=100&offset=0&in_mainland=true&request_id=${reqId}`,
@@ -646,6 +823,10 @@ class CopyManga extends ComicSource {
                     if (maxChapter > 100) {
                         let offset = 100;
                         while (offset < maxChapter) {
+                            await this._rateLimit();
+                            // 批量拉取章节时加入随机间隔，避免触发频率限制
+                            await CopyManga.sleep(randomInt(200, 600));
+
                             res = await Network.get(
                                 `${this.apiUrl}/api/v3/comic/${id}/group/${path}/chapters?limit=100&offset=${offset}`,
                                 this.headers
@@ -667,8 +848,14 @@ class CopyManga extends ComicSource {
                 let keys = Object.keys(groups);
                 let result = {};
                 let futures = [];
-                for (let group of keys) {
+                // 为并行请求之间加入微小错峰，避免同时发出大量请求
+                for (let i = 0; i < keys.length; i++) {
+                    let group = keys[i];
                     let path = groups[group]["path_word"];
+                    // 每个分组错开 300~600ms 发出请求
+                    if (i > 0) {
+                        await CopyManga.sleep(randomInt(300, 600));
+                    }
                     futures.push((async () => {
                         result[group] = await fetchSingle(id, path);
                     })());
@@ -711,7 +898,7 @@ class CopyManga extends ComicSource {
             ])
 
             if (results[0].status !== 200) {
-                throw `Invalid status code: ${res.status}`;
+                throw `Invalid status code: ${results[0].status}`;
             }
 
             let data = JSON.parse(results[0].body).results;
@@ -748,6 +935,9 @@ class CopyManga extends ComicSource {
             }
         },
         loadEp: async (comicId, epId) => {
+            // 章节加载前先限速 — 这是最容易被封的端点
+            await this._rateLimit();
+
             let attempt = 0;
             const maxAttempts = 5;
             let res;
@@ -782,8 +972,14 @@ class CopyManga extends ComicSource {
                                 "Unable to parse wait time, using default wait time 40s"
                             );
                         }
-                        console.log(`Chapter${epId} access too frequent, waiting ${waitTime / 1000}s`);
-                        await new Promise((resolve) => setTimeout(resolve, waitTime));
+                        // 对等待时间加入 20% 随机抖动，避免多设备同步重试
+                        let jitteredWait = CopyManga.jitter(waitTime, 0.2);
+                        // 指数退避：每次重试比上次多等 50%
+                        let backoffMultiplier = 1 + (attempt * 0.5);
+                        let finalWait = Math.floor(jitteredWait * backoffMultiplier);
+
+                        console.log(`Chapter${epId} access too frequent (attempt ${attempt + 1}/${maxAttempts}), waiting ${(finalWait / 1000).toFixed(1)}s (base: ${waitTime / 1000}s)`);
+                        await new Promise((resolve) => setTimeout(resolve, finalWait));
                         throw "Retry";
                     }
 
@@ -824,6 +1020,8 @@ class CopyManga extends ComicSource {
             }
         },
         loadComments: async (comicId, subId, page, replyTo) => {
+            await this._rateLimit();
+
             let url = `${this.apiUrl}/api/v3/comments?comic_id=${subId}&limit=20&offset=${(page - 1) * 20}`;
             if (replyTo) {
                 url = url + `&reply_id=${replyTo}&_update=true`;
@@ -887,6 +1085,8 @@ class CopyManga extends ComicSource {
             }
         },
         loadChapterComments: async (comicId, epId, page, replyTo) => {
+            await this._rateLimit();
+
             let url = `${this.apiUrl}/api/v3/roasts?chapter_id=${epId}&limit=20&offset=${(page - 1) * 20}`;
             let res = await Network.get(
                 url,
@@ -1040,6 +1240,28 @@ class CopyManga extends ComicSource {
             validator: '^(?!:\\/\\/)(?=.{1,253})([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$',
             default: CopyManga.defaultApiUrl,
         },
+        // ---- 高级反封禁设置 ----
+        app_version: {
+            title: "APP版本号（高级）",
+            type: "input",
+            validator: '^\\d+\\.\\d+\\.\\d+$',
+            default: '3.0.9',
+            description: "拷贝漫画APP版本号，APP更新后需同步修改。同时影响 User-Agent、referer、version 头。当前最新版：3.0.9（versionCode: 83, 2025.08.08构建）",
+        },
+        app_secret: {
+            title: "HMAC密钥（高级）",
+            type: "input",
+            validator: null,
+            default: "M2FmMDg1OTAzMTEwMzJlZmUwNjYwNTUwYTA1NjNhNTM=",
+            description: "请求签名的 HMAC-SHA256 密钥（Base64 编码）。APP更新后可能更换，需从新版本APK中提取。",
+        },
+        app_umstring: {
+            title: "友盟标识（高级）",
+            type: "input",
+            validator: null,
+            default: "b4c89ca4104ea9a97750314d791520ac",
+            description: "友盟统计 SDK 标识字符串。与APP版本绑定，更新APP版本时建议同步更新。",
+        },
         clear_device_info: {
             title: "清除设备信息",
             type: "callback",
@@ -1048,6 +1270,11 @@ class CopyManga extends ComicSource {
                 this.deleteData("_deviceinfo");
                 this.deleteData("_device");
                 this.deleteData("_pseudoid");
+                // 同时清除 request_id 缓存，因为换了设备指纹
+                this._reqIdCache = null;
+                this._reqIdCacheTime = 0;
+                // 清除请求时间戳记录
+                this._requestTimestamps = [];
                 this.refreshAppApi();
             }
         },
