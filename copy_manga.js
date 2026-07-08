@@ -4,7 +4,7 @@ class CopyManga extends ComicSource {
 
     key = "copy_manga"
 
-    version = "1.4.5"
+    version = "1.4.6"
 
     minAppVersion = "1.6.0"
 
@@ -86,7 +86,7 @@ class CopyManga extends ComicSource {
         this._requestTimestamps.push(Date.now());
 
         // 每次请求时检查是否需要轮换设备指纹
-        this._maybeRotateFingerprints();
+        await this._maybeRotateFingerprints();
     }
 
     // ============================================================
@@ -113,15 +113,16 @@ class CopyManga extends ComicSource {
         const rotateInterval = randomInt(20 * 60 * 1000, 40 * 60 * 1000);
 
         if (now - this._fingerprintCreatedAt > rotateInterval) {
-            this._rotateFingerprints();
+            return this._rotateFingerprints();
         }
     }
 
     /**
      * 强制立即轮换设备指纹。
      * 在收到 210 "破解版本" 错误时调用，立即更换身份。
+     * 同时刷新 API 域名（关键！210 封禁是按域名的，换域名可绕过 IP 黑名单）。
      */
-    _rotateFingerprints() {
+    async _rotateFingerprints() {
         this.deleteData("_deviceinfo");
         this.deleteData("_device");
         this.deleteData("_pseudoid");
@@ -132,6 +133,9 @@ class CopyManga extends ComicSource {
         this._reqIdCacheTime = 0;
         // 重置请求计数器，以新身份开始
         this._requestTimestamps = [];
+        // 关键：刷新 API 域名。network2 返回的动态域名（如 t66y.com）
+        // 没有当前 IP 的封禁记录，换域名即可绕过 210
+        await this.refreshAppApi();
     }
 
     // ============================================================
@@ -950,13 +954,13 @@ class CopyManga extends ComicSource {
             ])
 
             if (results[0].status !== 200) {
-                // 210 破解版检测：轮换指纹后抛出，让上层重试
+                // 210 破解版检测：轮换指纹+域名后抛出，让上层重试
                 if (results[0].status === 210) {
                     try {
                         let body = JSON.parse(results[0].body);
                         if (body.message && (body.message.includes("破解版本") || body.message.includes("copy3000"))) {
-                            this._rotateFingerprints();
-                            console.log(`loadInfo cracked version detected, rotated fingerprints (rotation #${this._fingerprintRotationCount})`);
+                            await this._rotateFingerprints();
+                            console.log(`loadInfo cracked version detected, rotated fingerprints+domain (rotation #${this._fingerprintRotationCount})`);
                         }
                     } catch (e) {}
                 }
@@ -1023,11 +1027,11 @@ class CopyManga extends ComicSource {
                             let responseBody = JSON.parse(res.body);
                             let msg = responseBody.message || "";
                             if (msg.includes("破解版本") || msg.includes("copy3000")) {
-                                // 服务端检测到"破解版本" — 立即轮换指纹重试
+                                // 服务端检测到"破解版本" — 立即轮换指纹+域名重试
                                 isCrackedDetected = true;
                                 waitTime = 5000; // 只等 5 秒即可重试
-                                this._rotateFingerprints();
-                                console.log(`Chapter${epId} cracked version detected, rotated fingerprints (rotation #${this._fingerprintRotationCount})`);
+                                await this._rotateFingerprints();
+                                console.log(`Chapter${epId} cracked version detected, rotated fingerprints+domain (rotation #${this._fingerprintRotationCount})`);
                             } else if (msg.includes("Expected available in")) {
                                 let match = msg.match(/(\d+)\s*seconds/);
                                 if (match && match[1]) {
@@ -1104,11 +1108,11 @@ class CopyManga extends ComicSource {
 
             if (res.status !== 200) {
                 if (res.status === 210) {
-                    // 检测破解版 210 并轮换指纹
+                    // 检测破解版 210 并轮换指纹+域名
                     try {
                         let body = JSON.parse(res.body);
                         if (body.message && (body.message.includes("破解版本") || body.message.includes("copy3000"))) {
-                            this._rotateFingerprints();
+                            await this._rotateFingerprints();
                         }
                     } catch (e) {}
                     throw "210：注冊用戶一天可以發5條評論"
