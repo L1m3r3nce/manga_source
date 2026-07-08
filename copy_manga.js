@@ -8,7 +8,7 @@ class CopyManga extends ComicSource {
 
     minAppVersion = "1.6.0"
 
-    url = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/copy_manga.js"
+    url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/copy_manga.js"
 
     // ============================================================
     //  Anti-blocking: rate limiting state

@@ -12,7 +12,7 @@ class Ehentai extends ComicSource {
     minAppVersion = "1.5.3"
 
     // update url
-    url = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/ehentai.js"
+    url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/ehentai.js"
 
     /**
      * cached api key
