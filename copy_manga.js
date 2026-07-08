@@ -4,7 +4,7 @@ class CopyManga extends ComicSource {
 
     key = "copy_manga"
 
-    version = "1.4.3"
+    version = "1.4.4"
 
     minAppVersion = "1.6.0"
 
@@ -1309,24 +1309,49 @@ class CopyManga extends ComicSource {
     }
 
     async refreshSearchApi() {
-        let url = "https://www.copy20.com/search"
-        let res = await fetch(url)
-        let searchApi = ""
-        if (res.status === 200) {
-            let text = await res.text()
-            let match = text.match(/const countApi = "([^"]+)"/)
-            if (match && match[1]) {
-                CopyManga.searchApi = match[1]
+        // 尝试多个可能的域名，因为拷贝漫画会更换搜索页面域名
+        const searchPageUrls = [
+            "https://www.copy20.com/search",
+            "https://www.copy3000.com/search",
+            "https://www.copy202602.com/search",
+        ];
+        for (const url of searchPageUrls) {
+            try {
+                let res = await fetch(url, {
+                    headers: {
+                        "User-Agent": `COPY/${this.appVersion}`,
+                        "Accept": "text/html,application/xhtml+xml",
+                    }
+                });
+                if (res.status === 200) {
+                    let text = await res.text();
+                    // 兼容两种格式: const countApi = "..." 和 countApi = "..."
+                    let match = text.match(/(?:const\s+)?countApi\s*=\s*"([^"]+)"/);
+                    if (match && match[1]) {
+                        CopyManga.searchApi = match[1];
+                        return; // 成功获取，退出
+                    }
+                }
+            } catch (e) {
+                // 尝试下一个 URL
             }
         }
     }
 
     async refreshAppApi() {
-        const url = "https://api.copy-manga.com/api/v3/system/network2?platform=3"
-        const res = await fetch(url, { headers: this.headers });
-        if (res.status === 200) {
-            let data = await res.json();
-            this.settings.base_url = data.results.api[0][0];
+        const url = "https://api.copy-manga.com/api/v3/system/network2?platform=3";
+        try {
+            const res = await fetch(url, { headers: this.headers });
+            if (res.status === 200) {
+                let data = await res.json();
+                // api[0][0] 是当前可用的 API 域名
+                let apiHost = data.results.api[0][0];
+                if (apiHost && typeof apiHost === 'string' && apiHost.length > 0) {
+                    this.settings.base_url = apiHost;
+                }
+            }
+        } catch (e) {
+            // 网络错误时保留现有 base_url 不变
         }
     }
 }
