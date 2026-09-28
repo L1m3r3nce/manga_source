@@ -67,9 +67,11 @@
         "url": "https://nhentai.net",
         "expect": [
           200
-        ]
+        ],
+        "soft": true
       }
-    ]
+    ],
+    "note": "CF对美国数据中心IP返回403, 属预期"
   },
   "wnacg": {
     "name": "紳士漫畫",
@@ -283,7 +285,8 @@
         "url": "https://godamh.com",
         "expect": [
           200
-        ]
+        ],
+        "soft": true
       },
       {
         "url": "https://api-get-v3.mgsearcher.com",
@@ -291,9 +294,11 @@
           200,
           403,
           404
-        ]
+        ],
+        "soft": true
       }
-    ]
+    ],
+    "note": "CF对美国数据中心IP返回403, 属预期"
   },
   "mh18": {
     "name": "18漫画",
