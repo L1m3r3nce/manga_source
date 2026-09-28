@@ -184,5 +184,12 @@
         "fileName": "kavita.js",
         "key": "kavita",
         "version": "1.0.0"
+    },
+    {
+        "name": "天才小说",
+        "fileName": "trxs.js",
+        "key": "trxs",
+        "version": "1.0.0",
+        "description": "轻小说/同人小说文本源, 需要venera 1.6.4+"
     }
 ]
