@@ -60,13 +60,13 @@
         "name": "爱看漫",
         "fileName": "ikmmh.js",
         "key": "ikmmh",
-        "version": "1.0.5"
+        "version": "1.0.7"
     },
     {
         "name": "少年ジャンプ＋",
         "fileName": "shonen_jump_plus.js",
         "key": "shonen_jump_plus",
-        "version": "1.1.1"
+        "version": "1.2.0"
     },
     {
         "name": "hitomi.la",
@@ -84,7 +84,8 @@
         "name": "优酷漫画",
         "fileName": "ykmh.js",
         "key": "ykmh",
-        "version": "1.0.0"
+        "version": "1.0.1",
+        "description": "域名已失效(ykmh.net已售卖)，站点恢复后请在源设置中填入新域名"
     },
     {
         "name": "再漫画",
@@ -102,7 +103,7 @@
         "name": "漫蛙吧",
         "fileName": "manwaba.js",
         "key": "manwaba",
-        "version": "1.0.2"
+        "version": "1.0.4"
     },
     {
         "name": "Lanraragi",
@@ -120,13 +121,14 @@
         "name": "カドコミ",
         "fileName": "comic_walker.js",
         "key": "comic_walker",
-        "version": "1.0.0"
+        "version": "1.0.1"
     },
     {
         "name": "漫画1234",
         "fileName": "mh1234.js",
         "key": "mh1234",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "description": "域名已失效，站点恢复后请在源设置中填入新域名"
     },
     {
         "name": "CCC追漫台",
@@ -144,7 +146,8 @@
         "name": "18漫画",
         "fileName": "mh18.js",
         "key": "mh18",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "description": "站点已启用Cloudflare人机验证，无法访问时可尝试更换网络环境或在源设置中修改域名"
     },
     {
         "name": "漫小肆",
@@ -175,18 +178,11 @@
         "fileName": "hot_manga.js",
         "key": "hot_manga",
         "version": "1.0.0"
-	},
+    },
     {
         "name": "Kavita",
         "fileName": "kavita.js",
         "key": "kavita",
         "version": "1.0.0"
-    },
-    {
-        "name": "嗨皮漫画",
-        "fileName": "happy.js",
-        "key": "happy",
-        "version": "1.0.0",
-        "description": "中国大陆及日韩IP无法访问，遇到403可以尝试切换其他地区网络"
     }
 ]

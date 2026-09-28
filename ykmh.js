@@ -2,12 +2,20 @@
 class YKMHSource extends ComicSource {
     name = "优酷漫画"
     key = "ykmh"
-    version = "1.0.0"
+    version = "1.0.1"
     minAppVersion = "1.4.0"
     url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/ykmh.js"
 
+    settings = {
+        domains: {
+            title: "域名",
+            type: "input",
+            default: "www.ykmh.net"
+        }
+    }
+
     get baseUrl() {
-        return "https://www.ykmh.net";
+        return `https://${this.loadSetting("domains")}`;
     }
 
     explore = [
@@ -16,7 +24,7 @@ class YKMHSource extends ComicSource {
             type: "multiPartPage",
 
             load: async (page) => {
-                let res = await Network.get("https://www.ykmh.net")
+                let res = await Network.get(this.baseUrl)
 
                 if (res.status !== 200) {
                     throw `Invalid status code: ${res.status}`
@@ -29,7 +37,7 @@ class YKMHSource extends ComicSource {
                     while ((match = carouselPattern.exec(html)) !== null) {
                         let cover = match[2]
                         if (!cover.startsWith('http')) {
-                            cover = 'https://www.ykmh.net' + (cover.startsWith('/') ? cover : '/' + cover)
+                            cover = this.baseUrl + (cover.startsWith('/') ? cover : '/' + cover)
                         }
                         
                         hotComics.push(new Comic({
@@ -41,12 +49,12 @@ class YKMHSource extends ComicSource {
                         }))
                     }
                     if (hotComics.length === 0) {
-                        let keywordPattern = /<li data-key="(\d+)"><a href="(https:\/\/www\.ykmh\.net\/manhua\/[^"]+)"[^>]*>([^<]+)<\/a><\/li>/g
+                        let keywordPattern = /<li data-key="(\d+)"><a href="(https?:\/\/[^"\' ]+\/manhua\/[^"]+)"[^>]*>([^<]+)<\/a><\/li>/g
                         while ((match = keywordPattern.exec(html)) !== null) {
                             hotComics.push(new Comic({
                                 id: match[2], 
                                 title: match[3],
-                                cover: "https://www.ykmh.net/images/default/cover.png", 
+                                cover: this.baseUrl + "/images/default/cover.png", 
                                 tags: [`热门关键词`],
                                 description: ""
                             }))
@@ -63,7 +71,7 @@ class YKMHSource extends ComicSource {
                     while ((match = comicPattern.exec(html)) !== null) {
                         let cover = match[4]
                         if (!cover.startsWith('http')) {
-                            cover = 'https://www.ykmh.net' + (cover.startsWith('/') ? cover : '/' + cover)
+                            cover = this.baseUrl + (cover.startsWith('/') ? cover : '/' + cover)
                         }
                         
                         latestComics.push(new Comic({
@@ -305,9 +313,9 @@ class YKMHSource extends ComicSource {
             sort = sort + options[0].split("-")[0]
             let url;
             if (param === "" || param === undefined) {
-                url = `https://www.ykmh.net/list/${sort}/?page=${page}`;
+                url = `${this.baseUrl}/list/${sort}/?page=${page}`;
             } else {
-                url = `https://www.ykmh.net/list/${param}/${sort}/${page}/`;
+                url = `${this.baseUrl}/list/${param}/${sort}/${page}/`;
             }
 
             let res = await Network.get(url);
@@ -323,7 +331,7 @@ class YKMHSource extends ComicSource {
                 while ((match = comicPattern.exec(html)) !== null) {
                     let cover = match[3]
                     if (!cover.startsWith('http')) {
-                        cover = 'https://www.ykmh.net' + (cover.startsWith('/') ? cover : '/' + cover)
+                        cover = this.baseUrl + (cover.startsWith('/') ? cover : '/' + cover)
                     }
                     
                     comics.push(new Comic({
@@ -377,9 +385,9 @@ class YKMHSource extends ComicSource {
             let encodedKeyword = encodeURIComponent(keyword);
             let url;
             if (page && page > 1) {
-                url = `https://www.ykmh.net/search/?keywords=${encodedKeyword}&page=${page}`;
+                url = `${this.baseUrl}/search/?keywords=${encodedKeyword}&page=${page}`;
             } else {
-                url = `https://www.ykmh.net/search/?keywords=${encodedKeyword}`;
+                url = `${this.baseUrl}/search/?keywords=${encodedKeyword}`;
             }
             
             let res = await Network.get(url);
@@ -394,7 +402,7 @@ class YKMHSource extends ComicSource {
                 while ((match = comicPattern.exec(html)) !== null) {
                     let cover = match[4]
                     if (!cover.startsWith('http')) {
-                        cover = 'https://www.ykmh.net' + (cover.startsWith('/') ? cover : '/' + cover)
+                        cover = this.baseUrl + (cover.startsWith('/') ? cover : '/' + cover)
                     }
                     comics.push(new Comic({
                         id: match[2], 
@@ -440,14 +448,14 @@ class YKMHSource extends ComicSource {
                 throw "ID不能为空";
             }
             let targetUrl = id;
-            if (id.startsWith('https://www.ykmh.net/')) {
-                targetUrl = id.replace('https://www.ykmh.net/', 'https://m.ykmh.net/');
+            if (id.startsWith(this.baseUrl + '/')) {
+                targetUrl = id.replace(this.baseUrl + '/', this.baseUrl + '/');
             } 
             else if (id.startsWith('/')) {
-                targetUrl = 'https://m.ykmh.net' + id;
+                targetUrl = this.baseUrl + id;
             } 
             else {
-                targetUrl = 'https://m.ykmh.net/' + id;
+                targetUrl = this.baseUrl + '/' + id;
             }
             
             if (!targetUrl.endsWith('/')) {
@@ -468,7 +476,7 @@ class YKMHSource extends ComicSource {
                     if (!html || typeof html !== 'string') {
                         return {
                             title: "未知标题",
-                            cover: "https://m.ykmh.net/images/default/cover.png",
+                            cover: this.baseUrl + "/images/default/cover.png",
                             author: "未知作者",
                             status: "未知状态",
                             tags: [],
@@ -485,7 +493,7 @@ class YKMHSource extends ComicSource {
                         console.warn("解析标题失败:", e);
                     }
 
-                    let cover = "https://m.ykmh.net/images/default/cover.png";
+                    let cover = this.baseUrl + "/images/default/cover.png";
                     try {
                         let coverMatch = html.match(/<div class="pic" id="Cover">\s*<mip-img src="([^"]+)"/);
                         if (coverMatch && coverMatch[1]) {
@@ -559,7 +567,7 @@ class YKMHSource extends ComicSource {
 
                     return {
                         title: title || "未知标题",
-                        cover: cover || "https://m.ykmh.net/images/default/cover.png",
+                        cover: cover || this.baseUrl + "/images/default/cover.png",
                         author: author || "未知作者",
                         status: status || "未知状态",
                         tags: tags || [],
@@ -569,7 +577,7 @@ class YKMHSource extends ComicSource {
                     console.error("parseComicInfo 总体错误:", error);
                     return {
                         title: "未知标题",
-                        cover: "https://m.ykmh.net/images/default/cover.png",
+                        cover: this.baseUrl + "/images/default/cover.png",
                         author: "未知作者",
                         status: "未知状态",
                         tags: [],
@@ -606,7 +614,7 @@ class YKMHSource extends ComicSource {
                                             let chapterUrl = chapterMatch[1];
                                             let chapterTitle = chapterMatch[2].trim();                                    
                                             if (!chapterUrl.startsWith('http')) {
-                                                chapterUrl = 'https://m.ykmh.net' + (chapterUrl.startsWith('/') ? chapterUrl : '/' + chapterUrl);
+                                                chapterUrl = this.baseUrl + (chapterUrl.startsWith('/') ? chapterUrl : '/' + chapterUrl);
                                             }
                                             groupChapters.set(chapterUrl, chapterTitle);
                                             let finalChapterTitle = chapterTitle;
@@ -641,7 +649,7 @@ class YKMHSource extends ComicSource {
                                     let chapterUrl = match[1];
                                     let chapterTitle = match[2].trim();
                                     if (!chapterUrl.startsWith('http')) {
-                                        chapterUrl = 'https://m.ykmh.net' + (chapterUrl.startsWith('/') ? chapterUrl : '/' + chapterUrl);
+                                        chapterUrl = this.baseUrl + (chapterUrl.startsWith('/') ? chapterUrl : '/' + chapterUrl);
                                     }
                                     
                                     allChaptersMap.set(chapterUrl, chapterTitle);
@@ -715,7 +723,7 @@ class YKMHSource extends ComicSource {
                 if (!comicInfo.author) comicInfo.author = "未知作者";
                 if (!comicInfo.status) comicInfo.status = "未知状态";
                 if (!comicInfo.description) comicInfo.description = "暂无描述";
-                if (!comicInfo.cover) comicInfo.cover = "https://m.ykmh.net/images/default/cover.png";
+                if (!comicInfo.cover) comicInfo.cover = this.baseUrl + "/images/default/cover.png";
                 if (!comicInfo.tags || !Array.isArray(comicInfo.tags)) comicInfo.tags = [];
                 let updateInfo = "暂无更新";
                 try {
@@ -790,9 +798,9 @@ class YKMHSource extends ComicSource {
             }
             let chapterUrl = epId;
             if (!chapterUrl.startsWith('http')) {
-                chapterUrl = 'https://m.ykmh.net' + (chapterUrl.startsWith('/') ? chapterUrl : '/' + chapterUrl);
-            } else if (chapterUrl.startsWith('https://www.ykmh.net/')) {
-                chapterUrl = chapterUrl.replace('https://www.ykmh.net/', 'https://m.ykmh.net/');
+                chapterUrl = this.baseUrl + (chapterUrl.startsWith('/') ? chapterUrl : '/' + chapterUrl);
+            } else if (chapterUrl.startsWith(this.baseUrl + '/')) {
+                chapterUrl = chapterUrl.replace(this.baseUrl + '/', this.baseUrl + '/');
             }
             let res = await Network.get(chapterUrl, {
                 headers: {
@@ -810,7 +818,7 @@ class YKMHSource extends ComicSource {
                         let imageList = JSON.parse(scriptMatch[1]);
                         images = imageList.map(img => {
                             if (!img.startsWith('http')) {
-                                return 'https://m.ykmh.net' + (img.startsWith('/') ? img : '/' + img);
+                                return this.baseUrl + (img.startsWith('/') ? img : '/' + img);
                             }
                             return img;
                         });
@@ -829,7 +837,7 @@ class YKMHSource extends ComicSource {
                         }
                         
                         if (!imgSrc.startsWith('http')) {
-                            imgSrc = 'https://m.ykmh.net' + (imgSrc.startsWith('/') ? imgSrc : '/' + imgSrc);
+                            imgSrc = this.baseUrl + (imgSrc.startsWith('/') ? imgSrc : '/' + imgSrc);
                         }
                         
                         images.push(imgSrc);
@@ -846,7 +854,7 @@ class YKMHSource extends ComicSource {
                         while ((match = imgPattern.exec(containerHtml)) !== null) {
                             let imgSrc = match[1];
                             if (!imgSrc.startsWith('http')) {
-                                imgSrc = 'https://m.ykmh.net' + (imgSrc.startsWith('/') ? imgSrc : '/' + imgSrc);
+                                imgSrc = this.baseUrl + (imgSrc.startsWith('/') ? imgSrc : '/' + imgSrc);
                             }
                             images.push(imgSrc);
                         }

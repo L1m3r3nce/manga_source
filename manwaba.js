@@ -8,15 +8,24 @@ class ManWaBa extends ComicSource {
   // unique id of the source
   key = "manwaba";
 
-  version = "1.0.3";
+  version = "1.0.4";
 
   minAppVersion = "1.4.0";
 
   // update url
   url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/manwaba.js";
 
-  //修改域名不能用问题
-  api = "https://mwuu.cc/api";
+  settings = {
+    domains: {
+      title: "域名",
+      type: "input",
+      default: "manwaxu.cc",
+    },
+  };
+
+  get api() {
+    return `https://${this.loadSetting("domains")}/api`;
+  }
 
   init() {
     /**

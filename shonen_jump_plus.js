@@ -1,507 +1,226 @@
 class ShonenJumpPlus extends ComicSource {
   name = "少年ジャンプ＋";
   key = "shonen_jump_plus";
-  version = "1.1.1";
+  version = "1.2.0";
   minAppVersion = "1.2.1";
   url =
     "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/shonen_jump_plus.js";
 
-  deviceId = this.generateDeviceId();
-  bearerToken = null;
-  userAccountId = null;
-  tokenExpiry = 0;
-  latestVersion = "4.0.24";
+  static UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
-  get headers() {
-    return {
-      "Origin": "https://shonenjumpplus.com",
-      "Referer": "https://shonenjumpplus.com/",
-      "X-Giga-Device-Id": this.deviceId,
-      "User-Agent": `ShonenJumpPlus-Android/${this.latestVersion}`,
-    };
+  webHeaders = {
+    "User-Agent": ShonenJumpPlus.UA,
+    "Referer": "https://shonenjumpplus.com/",
+  };
+
+  decodeEntities(s) {
+    return (s || "")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&amp;/g, "&");
   }
 
-  apiBase = `https://shonenjumpplus.com/api/v1`;
-  generateDeviceId() {
-    let result = "";
-    const chars = "0123456789abcdef";
-    for (let i = 0; i < 16; i++) {
-      result += chars[randomInt(0, chars.length - 1)];
-    }
-    return result;
+  seriesIdFromUrl(url) {
+    try {
+      const decoded = decodeURIComponent(url || "");
+      const m = decoded.match(/series-thumbnail[/|\\](\d+)-/);
+      if (m) return m[1];
+    } catch (e) {}
+    const raw = (url || "").match(/series-thumbnail\/(\d+)-/);
+    return raw ? raw[1] : null;
   }
 
-  async init() {
-    const url = "https://apps.apple.com/jp/app/id875750302";
-
-    const resp = await Network.get(url);
-
-    const match = resp.body.match(/whats-new__latest__version">[^<]*?([\d.]+)</);
-
-    if (match && match[1]) {
-      this.latestVersion = match[1];
-    }
+  // /series, /series/finished, /series/oneshot share the same list markup
+  parseListPage(body) {
+    const doc = new HtmlDocument(body);
+    return doc.querySelectorAll("li.series-list-item").map((e) => {
+      const a = e.querySelector("a");
+      const img = e.querySelector("img");
+      const title = e.querySelector("h2.series-list-title")?.text?.trim() ||
+        e.querySelector("h2")?.text?.trim() || "";
+      const author = e.querySelector("h3.series-list-author")?.text?.trim() ||
+        "";
+      const tagline = e.querySelector("p.series-list-tagline")?.text?.trim() ||
+        "";
+      let cover = "";
+      let id = null;
+      if (img) {
+        cover = img.attributes["data-src"] || img.attributes["src"] || "";
+        if (cover.includes("spacer.png")) cover = "";
+        if (cover.startsWith("https://cdn-scissors")) {
+          try {
+            const decoded = decodeURIComponent(cover);
+            const m = decoded.match(
+              /https:\/\/cdn-ak-img\.shonenjumpplus\.com\/public\/series-thumbnail\/\d+-[\w]+/,
+            );
+            if (m) cover = m[0];
+          } catch (e) {}
+        }
+        id = this.seriesIdFromUrl(cover);
+      }
+      return new Comic({
+        id: id || (a ? a.attributes["href"] : title),
+        title,
+        cover,
+        description: tagline,
+        tags: author ? [author] : [],
+      });
+    }).filter((c) => c.id && /^\d+$/.test(c.id));
   }
 
   explore = [
     {
-      title: "少年ジャンプ＋",
+      title: "連載一覧",
       type: "singlePageWithMultiPart",
       load: async () => {
-        await this.ensureAuth();
-
-        const response = await this.graphqlRequest("HomeCacheable", {});
-
-        if (!response || !response.data || !response.data.homeSections) {
-          throw "Cannot fetch home sections";
-        }
-
-        const sections = response.data.homeSections;
-        const dailyRankingSection = sections.find((section) =>
-          section.__typename === "DailyRankingSection"
+        const res = await Network.get(
+          "https://shonenjumpplus.com/series",
+          this.webHeaders,
         );
-
-        if (!dailyRankingSection || !dailyRankingSection.dailyRankings) {
-          throw "Cannot fetch daily ranking data";
-        }
-
-        const dailyRanking = dailyRankingSection.dailyRankings.find((ranking) =>
-          ranking.ranking && ranking.ranking.__typename === "DailyRanking"
+        if (res.status !== 200) throw `Invalid status: ${res.status}`;
+        return { "連載中": this.parseListPage(res.body) };
+      },
+    },
+    {
+      title: "連載終了作品",
+      type: "singlePageWithMultiPart",
+      load: async () => {
+        const res = await Network.get(
+          "https://shonenjumpplus.com/series/finished",
+          this.webHeaders,
         );
-
-        if (
-          !dailyRanking || !dailyRanking.ranking ||
-          !dailyRanking.ranking.items || !dailyRanking.ranking.items.edges
-        ) {
-          throw "Cannot fetch ranking data structure";
-        }
-
-        const rankingItems = dailyRanking.ranking.items.edges.map((edge) =>
-          edge.node
-        ).filter((node) =>
-          node.__typename === "DailyRankingValidItem" && node.product
+        if (res.status !== 200) throw `Invalid status: ${res.status}`;
+        return { "完結": this.parseListPage(res.body) };
+      },
+    },
+    {
+      title: "読切シリーズ",
+      type: "singlePageWithMultiPart",
+      load: async () => {
+        const res = await Network.get(
+          "https://shonenjumpplus.com/series/oneshot",
+          this.webHeaders,
         );
-
-        function parseComic(item) {
-          const series = item.product.series;
-          if (!series) return null;
-
-          const cover = series.squareThumbnailUriTemplate ||
-            series.horizontalThumbnailUriTemplate;
-
-          return {
-            id: series.databaseId,
-            title: series.title || "",
-            cover: cover
-              ? cover.replace("{height}", "500").replace("{width}", "500")
-              : "",
-            tags: [],
-            description: `Ranking: ${item.rank} · Views: ${
-              item.viewCount || "Unknown"
-            }`,
-          };
-        }
-
-        const comics = rankingItems.map(parseComic).filter((comic) =>
-          comic !== null
-        );
-
-        const result = {};
-        result["Daily Ranking"] = comics;
-        return result;
+        if (res.status !== 200) throw `Invalid status: ${res.status}`;
+        return { "読切": this.parseListPage(res.body) };
       },
     },
   ];
 
   search = {
     load: async (keyword, _, page) => {
-      if (!this.bearerToken || Date.now() > this.tokenExpiry) {
-        await this.fetchBearerToken();
-      }
-
-      const operationName = "SearchResult";
-
-      const response = await this.graphqlRequest(operationName, {
-        keyword,
-      });
-      const edges = response?.data?.search?.edges || [];
-      const pageInfo = response?.data?.search?.pageInfo || {};
-
-      const comics = edges.map(({ node }) => {
-        const authors = (node.author?.name || "").split(/\s*\/\s*/).filter(
-          Boolean,
+      const res = await Network.get(
+        `https://shonenjumpplus.com/search?q=${encodeURIComponent(keyword)}`,
+        this.webHeaders,
+      );
+      if (res.status !== 200) throw `Invalid status: ${res.status}`;
+      const doc = new HtmlDocument(res.body);
+      const comics = doc.querySelectorAll(".search-series-list li").map((e) => {
+        const img = e.querySelector("img");
+        const title = e.querySelector("p.series-title")?.text?.trim() ||
+          e.attributes["data-title"] || "";
+        const author = e.querySelector("p.author")?.text?.trim() || "";
+        const cover = img ? (img.attributes["src"] || "") : "";
+        const id = this.seriesIdFromUrl(cover);
+        return { title, author, cover, id };
+      }).filter((c) => c.id)
+        .map((c) =>
+          new Comic({
+            id: c.id,
+            title: c.title,
+            cover: c.cover,
+            tags: c.author ? [c.author] : [],
+          })
         );
-        const cover = node.latestIssue?.thumbnailUriTemplate ||
-          node.thumbnailUriTemplate;
-        if (node.__typename === "Series") {
-          return new Comic({
-            id: node.databaseId,
-            title: node.title || "",
-            cover: this.replaceCoverUrl(cover),
-            description: node.description || "",
-            tags: authors,
-          });
-        }
-        if (node.__typename === "MagazineLabel") {
-          return new Comic({
-            id: node.databaseId,
-            title: node.title || "",
-            cover: this.replaceCoverUrl(cover),
-          });
-        }
-        return null;
-      }).filter(Boolean);
-
-      return {
-        comics,
-        maxPage: pageInfo.hasNextPage ? (page || 1) + 1 : (page || 1),
-        endCursor: pageInfo.endCursor,
-      };
+      return { comics, maxPage: 1 };
     },
   };
 
+  // Parse /atom/series/{id} feed (XML) with regex to avoid parser quirks
+  parseAtomFeed(body) {
+    const titleMatch = body.match(
+      /<title[^>]*>[^<]*（([^<)]+)）<\/title>/,
+    ) || body.match(/<title[^>]*>([^<]+)<\/title>/);
+    const seriesTitle = titleMatch ? this.decodeEntities(titleMatch[1]).trim() : "";
+    const subtitleMatch = body.match(/<subtitle[^>]*>([\s\S]*?)<\/subtitle>/);
+    const description = subtitleMatch
+      ? this.decodeEntities(this.decodeEntities(subtitleMatch[1])).trim()
+      : "";
+    const feedLinkMatch = body.match(
+      /<link href="(https:\/\/shonenjumpplus\.com\/episode\/\d+)"[^>]*\/?>/,
+    );
+    const latestEpisodeUrl = feedLinkMatch ? feedLinkMatch[1] : "";
+    const entries = [];
+    const entryRe =
+      /<entry>\s*<title>([\s\S]*?)<\/title>\s*<link href="(https:\/\/shonenjumpplus\.com\/episode\/(\d+))"[\s\S]*?<updated>([^<]+)<\/updated>/g;
+    let m;
+    while ((m = entryRe.exec(body)) !== null) {
+      entries.push({
+        title: this.decodeEntities(m[1]).trim(),
+        url: m[2],
+        id: m[3],
+        updated: m[4],
+      });
+    }
+    // feed is newest-first; reading order is oldest-first
+    entries.reverse();
+    return { seriesTitle, description, latestEpisodeUrl, entries };
+  }
+
   comic = {
     loadInfo: async (id) => {
-      await this.ensureAuth();
-      const seriesData = await this.fetchSeriesDetail(id);
-      const episodes = await this.fetchEpisodes(id);
-
-      const { chapters, latestPublishAt } = episodes.reduce(
-        (acc, ep) => ({
-          chapters: {
-            ...acc.chapters,
-            [ep.databaseId]: ep.title || "",
-          },
-          latestPublishAt:
-            ep.publishedAt && ep.publishedAt > acc.latestPublishAt
-              ? ep.publishedAt
-              : acc.latestPublishAt,
-        }),
-        { chapters: {}, latestPublishAt: "" },
+      const res = await Network.get(
+        `https://shonenjumpplus.com/atom/series/${id}`,
+        this.webHeaders,
       );
+      if (res.status !== 200) throw `Invalid status: ${res.status}`;
+      const feed = this.parseAtomFeed(res.body);
+      if (!feed.entries.length) throw "No episodes found";
 
-      const maxDate = latestPublishAt > seriesData.openAt
-        ? latestPublishAt
-        : seriesData.openAt;
-      const updateDate = new Date(new Date(maxDate) - 60 * 60 * 1000);
-      const authors = (seriesData.author?.name || "").split(/\s*\/\s*/).filter(
-        Boolean,
-      );
+      const chapters = {};
+      for (const e of feed.entries) {
+        chapters[e.id] = e.title;
+      }
+      const latest = feed.entries[feed.entries.length - 1].updated;
 
       return new ComicDetails({
-        title: seriesData.title || "",
-        subtitle: authors.join(" / "),
-        cover: this.replaceCoverUrl(seriesData.thumbnailUriTemplate),
-        description: seriesData.description || "",
+        title: feed.seriesTitle,
+        subtitle: "",
+        description: feed.description,
         tags: {
-          "Author": authors,
-          "Update": [updateDate.toISOString().slice(0, 10)],
+          "Update": [latest.slice(0, 10)],
         },
-        url: `https://shonenjumpplus.com/app/episode/${seriesData.publisherId}`,
+        url: feed.latestEpisodeUrl,
         chapters,
       });
     },
 
     loadEp: async (comicId, epId) => {
-      await this.ensureAuth();
-      const episodeId = this.normalizeEpisodeId(epId);
-      const episodeData = await this.fetchEpisodePages(episodeId);
-
-      if (!this.isEpisodeAccessible(episodeData)) {
-        await this.handleEpisodePurchase(episodeData);
-        return this.comic.loadEp(comicId, epId);
+      const episodeId = typeof epId === "object" ? epId.id : epId;
+      const res = await Network.get(
+        `https://shonenjumpplus.com/episode/${episodeId}`,
+        this.webHeaders,
+      );
+      if (res.status !== 200) throw `Invalid status: ${res.status}`;
+      const m = res.body.match(
+        /<script[^>]*id=['"]episode-json['"][^>]*data-value='([^']*)'/,
+      );
+      if (!m) throw "episode-json not found";
+      let data;
+      try {
+        data = JSON.parse(this.decodeEntities(m[1]));
+      } catch (e) {
+        throw "Failed to parse episode json";
       }
-
-      return this.buildImageUrls(episodeData);
-    },
-
-    onImageLoad: (url) => {
-      const [cleanUrl, token] = url.split("?token=");
-      return {
-        url: cleanUrl,
-        headers: { "X-Giga-Page-Image-Auth": token },
-      };
-    },
-
-    onClickTag: (namespace, tag) => {
-      if (namespace === "Author") {
-        return {
-          action: "search",
-          keyword: `${tag}`,
-          param: null,
-        };
-      }
-      throw "Unsupported tag namespace: " + namespace;
+      const pages = data?.readableProduct?.pageStructure?.pages || [];
+      const images = pages.filter((p) => p.type === "main" && p.src).map((
+        p,
+      ) => p.src);
+      if (!images.length) throw "No images found";
+      return { images };
     },
   };
-
-  async ensureAuth() {
-    if (!this.bearerToken || Date.now() > this.tokenExpiry) {
-      await this.fetchBearerToken();
-    }
-  }
-
-  async graphqlRequest(operationName, variables) {
-    const payload = {
-      operationName,
-      variables,
-      query: GraphQLQueries[operationName],
-    };
-    const response = await Network.post(
-      `${this.apiBase}/graphql?opname=${operationName}`,
-      {
-        ...this.headers,
-        "Authorization": `Bearer ${this.bearerToken}`,
-        "Accept": "application/json",
-        "X-APOLLO-OPERATION-NAME": operationName,
-        "Content-Type": "application/json",
-      },
-      JSON.stringify(payload),
-    );
-
-    if (response.status !== 200) throw `Invalid status: ${response.status}`;
-    return JSON.parse(response.body);
-  }
-
-  normalizeEpisodeId(epId) {
-    if (typeof epId === "object") return epId.id;
-    if (typeof epId === "string" && epId.includes("/")) {
-      return epId.split("/").pop();
-    }
-    return epId;
-  }
-
-  replaceCoverUrl(url) {
-    return (url || "").replace("{height}", "1500").replace(
-      "{width}",
-      "1500",
-    ) || "";
-  }
-
-  async fetchBearerToken() {
-    const response = await Network.post(
-      `${this.apiBase}/user_account/access_token`,
-      this.headers,
-      "",
-    );
-    const { access_token, user_account_id } = JSON.parse(
-      response.body,
-    );
-    this.bearerToken = access_token;
-    this.userAccountId = user_account_id;
-    this.tokenExpiry = Date.now() + 3600000;
-  }
-
-  async fetchSeriesDetail(id) {
-    const response = await this.graphqlRequest("SeriesDetail", { id });
-    return response?.data?.series || {};
-  }
-
-  async fetchEpisodes(id) {
-    const response = await this.graphqlRequest(
-      "SeriesDetailEpisodeList",
-      { id, episodeOffset: 0, episodeFirst: 1500, episodeSort: "NUMBER_ASC" },
-    );
-    const episodes = (response?.data?.series?.episodes?.edges || []).map(
-      (edge) => edge.node
-    );
-    return episodes;
-  }
-
-  async fetchEpisodePages(episodeId) {
-    const response = await this.graphqlRequest(
-      "EpisodeViewerConditionallyCacheable",
-      { episodeID: episodeId },
-    );
-    return response?.data?.episode || {};
-  }
-
-  isEpisodeAccessible({ purchaseInfo }) {
-    return purchaseInfo?.isFree || purchaseInfo?.hasPurchased ||
-      purchaseInfo?.hasRented;
-  }
-
-  async handleEpisodePurchase(episodeData) {
-    const { id, purchaseInfo } = episodeData;
-    const { purchasableViaOnetimeFree, rentable, unitPrice } = purchaseInfo ||
-      {};
-
-    if (purchasableViaOnetimeFree) await this.consumeOnetimeFree(id);
-    if (rentable) await this.rentChapter(id, unitPrice);
-  }
-
-  buildImageUrls({ pageImages, pageImageToken }) {
-    const validImages = pageImages.edges.flatMap((edge) => edge.node?.src)
-      .filter(Boolean);
-    return {
-      images: validImages.map((url) => `${url}?token=${pageImageToken}`),
-    };
-  }
-
-  async consumeOnetimeFree(episodeId) {
-    const response = await this.graphqlRequest("ConsumeOnetimeFree", {
-      input: { id: episodeId },
-    });
-    return response?.data?.consumeOnetimeFree?.isSuccess;
-  }
-
-  async rentChapter(episodeId, unitPrice, retryCount = 0) {
-    if (retryCount > 3) {
-      throw "Failed to rent chapter after multiple attempts.";
-    }
-    const response = await this.graphqlRequest("Rent", {
-      input: { id: episodeId, unitPrice },
-    });
-
-    if (response.errors?.[0]?.extensions?.code === "FAILED_TO_USE_POINT") {
-      await this.refreshAccount();
-      return this.rentChapter(episodeId, unitPrice, retryCount + 1);
-    }
-
-    this.userAccountId = response?.data?.rent?.userAccount?.databaseId;
-    return true;
-  }
-
-  async refreshAccount() {
-    this.deviceId = this.generateDeviceId();
-    this.bearerToken = this.userAccountId = null;
-    this.tokenExpiry = 0;
-    await this.fetchBearerToken();
-    await this.addUserDevice();
-  }
-
-  async addUserDevice() {
-    await this.graphqlRequest("AddUserDevice", {
-      input: {
-        deviceName: `Android ${21 + Math.floor(Math.random() * 14)}`,
-        modelName: `Device-${Math.random().toString(36).slice(2, 10)}`,
-        osName: `Android ${9 + Math.floor(Math.random() * 6)}`,
-      },
-    });
-    this.addUserDeviceCalled = true;
-  }
 }
-
-const GraphQLQueries = {
-  "SearchResult": `query SearchResult($after: String, $keyword: String!) {
-        search(after: $after, first: 50, keyword: $keyword, types: [SERIES,MAGAZINE_LABEL]) {
-            pageInfo { hasNextPage endCursor }
-            edges {
-                node {
-                    __typename
-                    ... on Series { id databaseId title thumbnailUriTemplate author { name } description }
-                    ... on MagazineLabel { id databaseId title thumbnailUriTemplate latestIssue { thumbnailUriTemplate } }
-                }
-            }
-        }
-    }`,
-  "SeriesDetail": `query SeriesDetail($id: String!) {
-        series(databaseId: $id) {
-            id databaseId title thumbnailUriTemplate
-            author { name }
-            description
-            hashtags serialUpdateScheduleLabel
-            openAt
-            publisherId
-        }
-    }`,
-  "SeriesDetailEpisodeList":
-    `query SeriesDetailEpisodeList($id: String!, $episodeOffset: Int, $episodeFirst: Int, $episodeSort: ReadableProductSorting) {
-        series(databaseId: $id) {
-            episodes: readableProducts(types: [EPISODE], first: $episodeFirst, offset: $episodeOffset, sort: $episodeSort) {
-                edges { node { databaseId title publishedAt } }
-            }
-        }
-    }`,
-  "EpisodeViewerConditionallyCacheable":
-    `query EpisodeViewerConditionallyCacheable($episodeID: String!) {
-        episode(databaseId: $episodeID) {
-            id pageImages { edges { node { src } } } pageImageToken
-            purchaseInfo {
-                isFree hasPurchased hasRented
-                purchasableViaOnetimeFree rentable unitPrice
-            }
-        }
-    }`,
-  "ConsumeOnetimeFree":
-    `mutation ConsumeOnetimeFree($input: ConsumeOnetimeFreeInput!) {
-        consumeOnetimeFree(input: $input) { isSuccess }
-    }`,
-  "Rent": `mutation Rent($input: RentInput!) {
-        rent(input: $input) {
-            userAccount { databaseId }
-        }
-    }`,
-  "AddUserDevice": `mutation AddUserDevice($input: AddUserDeviceInput!) {
-        addUserDevice(input: $input) { isSuccess }
-    }`,
-  "HomeCacheable": `query HomeCacheable {
-    homeSections {
-      __typename
-      ...DailyRankingSection
-    }
-  }
-  fragment DesignSectionImage on DesignSectionImage {
-    imageUrl width height
-  }
-  fragment SerialInfoIcon on SerialInfo {
-    isOriginal isIndies
-  }
-  fragment DailyRankingSeries on Series {
-    id databaseId publisherId title
-    horizontalThumbnailUriTemplate: subThumbnailUri(type: HORIZONTAL_WITH_LOGO)
-    squareThumbnailUriTemplate: subThumbnailUri(type: SQUARE_WITHOUT_LOGO)
-    isNewOngoing supportsOnetimeFree
-    serialInfo {
-      __typename ...SerialInfoIcon
-      status isTrial
-    }
-    jamEpisodeWorkType
-  }
-  fragment DailyRankingItem on DailyRankingItem {
-    __typename
-    ... on DailyRankingValidItem {
-      product {
-        __typename
-        ... on Episode {
-          id databaseId publisherId commentCount
-          series {
-            __typename ...DailyRankingSeries
-          }
-        }
-        ... on SpecialContent {
-          publisherId linkUrl
-          series {
-            __typename ...DailyRankingSeries
-          }
-        }
-      }
-      badge { name label }
-      label rank viewCount
-    }
-    ... on DailyRankingInvalidItem {
-      publisherWorkId
-    }
-  }
-  fragment DailyRanking on DailyRanking {
-    date firstPositionSeriesId
-    items {
-      edges {
-        node {
-          __typename ...DailyRankingItem
-        }
-      }
-    }
-  }
-  fragment DailyRankingSection on DailyRankingSection {
-    title
-    titleImage {
-      __typename ...DesignSectionImage
-    }
-    dailyRankings {
-      ranking {
-        __typename ...DailyRanking
-      }
-    }
-  }`,
-};
