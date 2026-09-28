@@ -1,0 +1,374 @@
+{
+  "comment": "漫画源健康检查配置。url: 检查地址; expect: 可接受状态码; require: any=一个通过即可/all=全部通过。status 用于声明已知状态, 避免重复告警。",
+  "copy_manga": {
+    "name": "拷贝漫画",
+    "require": "any",
+    "urls": [
+      {
+        "url": "https://www.copy20.com",
+        "expect": [
+          200
+        ]
+      },
+      {
+        "url": "https://www.copy3000.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "Komiic": {
+    "name": "Komiic",
+    "urls": [
+      {
+        "url": "https://komiic.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "baozi": {
+    "name": "包子漫画",
+    "urls": [
+      {
+        "url": "https://www.baozimh.com",
+        "expect": [
+          200,
+          403
+        ],
+        "soft": true
+      }
+    ],
+    "note": "CF可能对数据中心IP返回403"
+  },
+  "picacg": {
+    "name": "Picacg",
+    "note": "API根路径无GET语义, 4xx属正常",
+    "urls": [
+      {
+        "url": "https://picaapi.picacomic.com/",
+        "expect": [
+          200,
+          400,
+          401,
+          403,
+          404,
+          405
+        ]
+      }
+    ]
+  },
+  "nhentai": {
+    "name": "nhentai",
+    "urls": [
+      {
+        "url": "https://nhentai.net",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "wnacg": {
+    "name": "紳士漫畫",
+    "require": "any",
+    "urls": [
+      {
+        "url": "https://www.wnacg.com",
+        "expect": [
+          200
+        ]
+      },
+      {
+        "url": "https://wn01.link",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "ehentai": {
+    "name": "ehentai",
+    "urls": [
+      {
+        "url": "https://e-hentai.org",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "jm": {
+    "name": "禁漫天堂",
+    "note": "域名列表源+主站",
+    "require": "any",
+    "urls": [
+      {
+        "url": "https://rup4a04-c02.tos-cn-hongkong.bytepluses.com/newsvr-2025.txt",
+        "expect": [
+          200
+        ]
+      },
+      {
+        "url": "https://18comic.vip",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "manga_dex": {
+    "name": "MangaDex",
+    "urls": [
+      {
+        "url": "https://api.mangadex.org/ping",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "ikmmh": {
+    "name": "爱看漫",
+    "note": "站点有防爬, 403/CF不代表源不可用",
+    "urls": [
+      {
+        "url": "https://www.ikmmh.com",
+        "expect": [
+          200,
+          403
+        ],
+        "soft": true
+      }
+    ]
+  },
+  "shonen_jump_plus": {
+    "name": "少年ジャンプ＋",
+    "urls": [
+      {
+        "url": "https://shonenjumpplus.com/series",
+        "expect": [
+          200
+        ]
+      },
+      {
+        "url": "https://shonenjumpplus.com/atom/series/10834108156648240732",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "hitomi": {
+    "name": "hitomi.la",
+    "urls": [
+      {
+        "url": "https://hitomi.la",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "comick": {
+    "name": "comick",
+    "urls": [
+      {
+        "url": "https://comick.art",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "ykmh": {
+    "name": "优酷漫画",
+    "status": "dead",
+    "note": "域名已售卖, 监控是否复活",
+    "urls": [
+      {
+        "url": "https://www.ykmh.net",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "zaimanhua": {
+    "name": "再漫画",
+    "urls": [
+      {
+        "url": "https://www.zaimanhua.com",
+        "expect": [
+          200,
+          403
+        ]
+      }
+    ]
+  },
+  "ManHuaGui": {
+    "name": "漫画柜",
+    "note": "US出口可能被CF拦截",
+    "require": "any",
+    "urls": [
+      {
+        "url": "https://www.manhuagui.com",
+        "expect": [
+          200,
+          403
+        ]
+      },
+      {
+        "url": "https://cf.mhgui.com",
+        "expect": [
+          200,
+          403
+        ]
+      }
+    ]
+  },
+  "manwaba": {
+    "name": "漫蛙吧",
+    "urls": [
+      {
+        "url": "https://manwaxu.cc/api/home",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "comic_walker": {
+    "name": "カドコミ",
+    "urls": [
+      {
+        "url": "https://comic-walker.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "mh1234": {
+    "name": "漫画1234",
+    "status": "dead",
+    "note": "域名已失效, 监控是否复活",
+    "urls": [
+      {
+        "url": "https://b.amh1234.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "ccc": {
+    "name": "CCC追漫台",
+    "urls": [
+      {
+        "url": "https://www.creative-comic.tw/",
+        "expect": [
+          200
+        ]
+      }
+    ],
+    "note": "API需token, 以官网可达性为准"
+  },
+  "goda": {
+    "name": "GoDa漫画",
+    "urls": [
+      {
+        "url": "https://godamh.com",
+        "expect": [
+          200
+        ]
+      },
+      {
+        "url": "https://api-get-v3.mgsearcher.com",
+        "expect": [
+          200,
+          403,
+          404
+        ]
+      }
+    ]
+  },
+  "mh18": {
+    "name": "18漫画",
+    "status": "cloudflare",
+    "note": "整站Cloudflare人机验证",
+    "urls": [
+      {
+        "url": "https://18mh.org",
+        "expect": [
+          200
+        ],
+        "soft": true
+      }
+    ]
+  },
+  "mxs": {
+    "name": "漫小肆",
+    "require": "any",
+    "urls": [
+      {
+        "url": "https://www.mxshm.top",
+        "expect": [
+          200
+        ]
+      },
+      {
+        "url": "https://www.jjmhw1.top",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "manhuaren": {
+    "name": "漫画人",
+    "urls": [
+      {
+        "url": "https://www.manhuaren.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "hcomic": {
+    "name": "H-Comic",
+    "urls": [
+      {
+        "url": "https://h-comic.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "jcomic": {
+    "name": "jcomic.net",
+    "urls": [
+      {
+        "url": "https://jcomic.net",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  },
+  "hot_manga": {
+    "name": "热辣漫画",
+    "urls": [
+      {
+        "url": "https://www.manga2026.com",
+        "expect": [
+          200
+        ]
+      }
+    ]
+  }
+}
