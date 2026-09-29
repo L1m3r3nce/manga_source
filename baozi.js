@@ -6,7 +6,7 @@
 class Baozi extends ComicSource {
   name = "包子漫画";
   key = "baozi";
-  version = "1.2.2";
+  version = "1.2.3";
   minAppVersion = "1.2.1";
   url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/baozi.js";
 
@@ -193,29 +193,52 @@ class Baozi extends ComicSource {
       // epId = "{section}-{chapter}@{fullId}"
       const [slots, fullId] = epId.split("@");
       const [s, c] = slots.split("-");
-      const url =
-        `${this.baseUrl}/comic/chapter/${fullId}/${s}_${c}.html`;
-      const res = await Network.get(url, this.headers);
-      if (res.status !== 200) throw `Invalid status: ${res.status}`;
-
-      // 章节正文图在 <amp-img class="comic-contain__item">(AMP页面), 底部推荐封面才是 <img>;
-      // 同一图会以 amp-img + fallback img 出现两次, 按URL去重
       const cdn = this.loadSetting("cdn_domains") || "";
-      const seen = new Set();
-      const images = [];
-      const re = /<(?:amp-)?img[^>]*\ssrc="([^"]+)"[^>]*>/g;
-      let m;
-      while ((m = re.exec(res.body)) !== null) {
-        let u = m[1].replace(/&amp;/g, "&");
-        if (!/scomic|bzcdn|baozicdn/.test(u)) continue;
-        if (cdn) {
-          u = u.replace(/^(https?:\/\/)[^/]+/, `$1${cdn}`);
-        }
-        if (!seen.has(u)) {
-          seen.add(u);
-          images.push(u);
-        }
+
+      // 2026-09: 图片CDN对大量IP段(国内运营商/部分代理出口)把热链图替换为引流图,
+      // 官方网页阅读器同样中招; App专用端点不受影响, 优先走它, CF拦截(403)时回落网页版
+      const extract = (html) => {
+        const seen = new Set();
+        const images = [];
+        const push = (raw) => {
+          let u = raw.replace(/&amp;/g, "&");
+          if (!/scomic|bzcdn|baozicdn/.test(u)) return;
+          if (cdn) {
+            u = u.replace(/^(https?:\/\/)[^/]+/, `$1${cdn}`);
+          }
+          // 版本参数: 强制更换缓存键, 避免命中此前被引流图污染的缓存(服务端忽略该参数)
+          u += (u.includes("?") ? "&" : "?") + "_kv=123";
+          if (!seen.has(u)) {
+            seen.add(u);
+            images.push(u);
+          }
+        };
+        // App端点: <... class="comic-contain__item" data-src="...">
+        let m;
+        let re = /comic-contain__item[^>]*\sdata-src="([^"]+)"/g;
+        while ((m = re.exec(html)) !== null) push(m[1]);
+        if (images.length > 0) return images;
+        // 网页版AMP: <amp-img class="comic-contain__item" src="...">, 同图双标签去重
+        re = /<(?:amp-)?img[^>]*\ssrc="([^"]+)"[^>]*>/g;
+        while ((m = re.exec(html)) !== null) push(m[1]);
+        return images;
+      };
+
+      let res = await Network.get(
+        `https://appcn.baozimh.com/baozimhapp/comic/chapter/${fullId}/${s}_${c}.html`,
+        this.headers,
+      );
+      if (res.status === 200) {
+        const images = extract(res.body);
+        if (images.length > 0) return { images };
       }
+
+      res = await Network.get(
+        `${this.baseUrl}/comic/chapter/${fullId}/${s}_${c}.html`,
+        this.headers,
+      );
+      if (res.status !== 200) throw `Invalid status: ${res.status}`;
+      const images = extract(res.body);
       if (images.length === 0) throw "No images found";
       return { images };
     },

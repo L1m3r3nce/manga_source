@@ -16,8 +16,8 @@
         "name": "包子漫画",
         "fileName": "baozi.js",
         "key": "baozi",
-        "version": "1.2.2",
-        "description": "适配2026新版网站, 默认域名webmota.com"
+        "version": "1.2.3",
+        "description": "适配2026新版网站, 图片走App专用端点绕过引流图替换; 若显示二维码请清除App图片缓存"
     },
     {
         "name": "Picacg",
