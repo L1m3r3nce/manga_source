@@ -6,7 +6,7 @@
 class Baozi extends ComicSource {
   name = "包子漫画";
   key = "baozi";
-  version = "1.2.0";
+  version = "1.2.1";
   minAppVersion = "1.2.1";
   url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/baozi.js";
 
@@ -137,6 +137,12 @@ class Baozi extends ComicSource {
 
       let title = id;
       let cover = `https://static-tw.baozimh.com/cover/${id}.jpg`;
+      // canonical URL 中提取完整ID后缀hash, 用于直接构造章节页地址
+      let fullId = id;
+      const cm = html.match(
+        /rel="canonical"\s+href="https?:\/\/[^"\/]+\/comic\/([a-z0-9_-]+)"/,
+      );
+      if (cm) fullId = cm[1];
       const im = html.match(
         /<amp-img[^>]*alt="([^"]+)"[^>]*src="(https:\/\/static[^"\s]+cover\/[^"\s]+)"/,
       );
@@ -158,7 +164,7 @@ class Baozi extends ComicSource {
         /href="\/user\/page_direct\?comic_id=[^"&]+&(?:amp;)?section_slot=(\d+)&(?:amp;)?chapter_slot=(\d+)"[^>]*>([\s\S]*?)<\/a>/g;
       let m;
       while ((m = re.exec(html)) !== null) {
-        const key = `${m[1]}-${m[2]}`;
+        const key = `${m[1]}-${m[2]}@${fullId}`;
         if (seenKeys.has(key)) continue;
         seenKeys.add(key);
         const name = m[3].replace(/<[^>]+>/g, "").trim();
@@ -167,8 +173,8 @@ class Baozi extends ComicSource {
       if (list.length === 0) throw "No chapters found";
       // 页面顺序不可靠(首尾混有推荐链接), 按 section+chapter 数值排序
       list.sort((a, b) => {
-        const [sa, ca] = a[0].split("-").map(Number);
-        const [sb, cb] = b[0].split("-").map(Number);
+        const [sa, ca] = a[0].split("@")[0].split("-").map(Number);
+        const [sb, cb] = b[0].split("@")[0].split("-").map(Number);
         return sa - sb || ca - cb;
       });
       const chapters = {};
@@ -184,9 +190,11 @@ class Baozi extends ComicSource {
     },
 
     loadEp: async (comicId, epId) => {
-      const [s, c] = epId.split("-");
+      // epId = "{section}-{chapter}@{fullId}"
+      const [slots, fullId] = epId.split("@");
+      const [s, c] = slots.split("-");
       const url =
-        `${this.baseUrl}/user/page_direct?comic_id=${comicId}&section_slot=${s}&chapter_slot=${c}`;
+        `${this.baseUrl}/comic/chapter/${fullId}/${s}_${c}.html`;
       const res = await Network.get(url, this.headers);
       if (res.status !== 200) throw `Invalid status: ${res.status}`;
 
