@@ -33,7 +33,7 @@
     "name": "包子漫画",
     "urls": [
       {
-        "url": "https://www.baozimh.com",
+        "url": "https://cn.webmota.com/",
         "expect": [
           200,
           403
@@ -41,7 +41,7 @@
         "soft": true
       }
     ],
-    "note": "CF可能对数据中心IP返回403"
+    "note": "2026新版网站, 主域webmota"
   },
   "picacg": {
     "name": "Picacg",
