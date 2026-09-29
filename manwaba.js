@@ -8,7 +8,7 @@ class ManWaBa extends ComicSource {
   // unique id of the source
   key = "manwaba";
 
-  version = "1.0.5";
+  version = "1.0.6";
 
   minAppVersion = "1.4.0";
 
@@ -25,6 +25,34 @@ class ManWaBa extends ComicSource {
 
   get api() {
     return `https://${this.loadSetting("domains")}/api`;
+  }
+
+  /** 官网 chapter.js 的 BaseUtil.AES_KEY, 取前32字节作AES-256密钥 */
+  static imageKeyStr = "0B6666A0-BB59-1381-B746-a0E4C9AC";
+
+  static decryptImageIfEncrypted(bytes) {
+    const b0 = bytes[0];
+    const b1 = bytes[1];
+    if (
+      (b0 === 0xff && b1 === 0xd8) || // JPEG
+      (b0 === 0x89 && b1 === 0x50) || // PNG
+      (b0 === 0x47 && b1 === 0x49) || // GIF
+      (b0 === 0x52 && b1 === 0x49) || // RIFF (WebP)
+      (b0 === 0x42 && b1 === 0x4d) // BMP
+    ) {
+      return bytes;
+    }
+    try {
+      const key = Convert.encodeUtf8(
+        ManWaBa.imageKeyStr.substring(0, 32),
+      );
+      const iv = bytes.slice(0, 16);
+      const ct = bytes.slice(16);
+      const pt = Convert.decryptAesCbc(ct.buffer, key, iv.buffer);
+      return new Uint8Array(pt);
+    } catch (e) {
+      return bytes;
+    }
   }
 
   init() {
@@ -344,6 +372,27 @@ class ManWaBa extends ComicSource {
 
   /// single comic related
   comic = {
+    /**
+     * 图片按需解密: 官网2026起对部分线路/客户端返回AES加密图片
+     * (密文 = IV(16B) + AES-256-CBC密文, key=官网BaseUtil.AES_KEY前32字节, PKCS7)
+     * 未加密响应按魔数直接放行
+     */
+    onImageLoad: (imageKey, comicId, ep) => {
+      return {
+        onResponse: (bytes) => {
+          return ManWaBa.decryptImageIfEncrypted(bytes);
+        },
+      };
+    },
+
+    onThumbnailLoad: (imageKey) => {
+      return {
+        onResponse: (bytes) => {
+          return ManWaBa.decryptImageIfEncrypted(bytes);
+        },
+      };
+    },
+
     /**
      * load comic info
      * @param id {string}
