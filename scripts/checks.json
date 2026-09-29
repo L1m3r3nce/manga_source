@@ -5,18 +5,13 @@
     "require": "any",
     "urls": [
       {
-        "url": "https://www.copy20.com",
-        "expect": [
-          200
-        ]
-      },
-      {
-        "url": "https://www.copy3000.com",
+        "url": "https://www.copy4000.com/",
         "expect": [
           200
         ]
       }
-    ]
+    ],
+    "note": "2026新版网页"
   },
   "Komiic": {
     "name": "Komiic",
