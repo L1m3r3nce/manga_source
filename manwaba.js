@@ -8,7 +8,7 @@ class ManWaBa extends ComicSource {
   // unique id of the source
   key = "manwaba";
 
-  version = "1.0.6";
+  version = "1.0.8";
 
   minAppVersion = "1.4.0";
 
@@ -30,17 +30,20 @@ class ManWaBa extends ComicSource {
   /** 官网 chapter.js 的 BaseUtil.AES_KEY, 取前32字节作AES-256密钥 */
   static imageKeyStr = "0B6666A0-BB59-1381-B746-a0E4C9AC";
 
-  static decryptImageIfEncrypted(bytes) {
+  static decryptImageIfEncrypted(input) {
+    // 按API文档契约: 入参/返回均为 ArrayBuffer; 内部用 Uint8Array 视图操作
+    // new Uint8Array() 对 ArrayBuffer/Uint8Array/普通Array 均兼容
+    const bytes = new Uint8Array(input);
     const b0 = bytes[0];
     const b1 = bytes[1];
-    if (
+    const isPlain =
       (b0 === 0xff && b1 === 0xd8) || // JPEG
       (b0 === 0x89 && b1 === 0x50) || // PNG
       (b0 === 0x47 && b1 === 0x49) || // GIF
       (b0 === 0x52 && b1 === 0x49) || // RIFF (WebP)
-      (b0 === 0x42 && b1 === 0x4d) // BMP
-    ) {
-      return bytes;
+      (b0 === 0x42 && b1 === 0x4d); // BMP
+    if (isPlain) {
+      return bytes.buffer;
     }
     try {
       const key = Convert.encodeUtf8(
@@ -49,9 +52,12 @@ class ManWaBa extends ComicSource {
       const iv = bytes.slice(0, 16);
       const ct = bytes.slice(16);
       const pt = Convert.decryptAesCbc(ct.buffer, key, iv.buffer);
-      return new Uint8Array(pt);
+      if (pt instanceof ArrayBuffer) {
+        return pt;
+      }
+      return new Uint8Array(pt).buffer;
     } catch (e) {
-      return bytes;
+      return bytes.buffer;
     }
   }
 
