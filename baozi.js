@@ -87,7 +87,7 @@ class Baozi extends ComicSource {
 
   explore = [
     {
-      title: "最新上架",
+      title: "包子漫画",
       type: "multiPageComicList",
       load: async (page) => {
         const res = await Network.get(`${this.baseUrl}/list/new`, this.headers);
