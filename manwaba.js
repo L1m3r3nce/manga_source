@@ -8,7 +8,7 @@ class ManWaBa extends ComicSource {
   // unique id of the source
   key = "manwaba";
 
-  version = "1.0.4";
+  version = "1.0.5";
 
   minAppVersion = "1.4.0";
 
@@ -399,20 +399,21 @@ class ManWaBa extends ComicSource {
     loadEp: async (comicId, epId) => {
       let imgApi = `${this.api}/comic/image/${epId}`;
       let params = {
-        page: 1,
-        pageSize: 1,
         imageSource: "https://tu.mhttu.cc",
       };
-      let pageNum = await this.fetchJson(imgApi, {
-        params,
-      }).then((res) => res.data.pagination.total);
-      let imageRes = await this.fetchJson(imgApi, {
-        params: {
-          ...params,
-          page_size: pageNum,
-        },
-      }).then((res) => res.data.images);
-      let images = imageRes.map((item) => item.url);
+      // API 单页上限 25 张(pageSize 再大也只返回 25), 按 total_pages 翻页取全
+      let first = await this.fetchJson(imgApi, {
+        params: { ...params, page: 1, pageSize: 25 },
+      }).then((res) => res.data);
+      let images = (first.images || []).map((item) => item.url);
+      let totalPages = first.pagination?.total_pages || 1;
+      for (let p = 2; p <= totalPages; p++) {
+        let part = await this.fetchJson(imgApi, {
+          params: { ...params, page: p, pageSize: 25 },
+        }).then((res) => res.data.images || []);
+        images.push(...part.map((item) => item.url));
+      }
+      if (images.length === 0) throw "No images found";
       return {
         images,
       };

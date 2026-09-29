@@ -6,7 +6,7 @@
 class Baozi extends ComicSource {
   name = "包子漫画";
   key = "baozi";
-  version = "1.2.1";
+  version = "1.2.2";
   minAppVersion = "1.2.1";
   url = "https://cdn.jsdelivr.net/gh/l1m3r3nce/manga_source@main/baozi.js";
 
@@ -198,19 +198,24 @@ class Baozi extends ComicSource {
       const res = await Network.get(url, this.headers);
       if (res.status !== 200) throw `Invalid status: ${res.status}`;
 
-      const doc = new HtmlDocument(res.body);
+      // 章节正文图在 <amp-img class="comic-contain__item">(AMP页面), 底部推荐封面才是 <img>;
+      // 同一图会以 amp-img + fallback img 出现两次, 按URL去重
       const cdn = this.loadSetting("cdn_domains") || "";
-      const images = doc
-        .querySelectorAll("img")
-        .map((img) => img.attributes["src"] || "")
-        .filter((u) => /scomic|bzcdn|baozicdn/.test(u))
-        .map((u) => {
-          u = u.replace(/&amp;/g, "&");
-          if (cdn) {
-            u = u.replace(/^(https?:\/\/)[^/]+/, `$1${cdn}`);
-          }
-          return u;
-        });
+      const seen = new Set();
+      const images = [];
+      const re = /<(?:amp-)?img[^>]*\ssrc="([^"]+)"[^>]*>/g;
+      let m;
+      while ((m = re.exec(res.body)) !== null) {
+        let u = m[1].replace(/&amp;/g, "&");
+        if (!/scomic|bzcdn|baozicdn/.test(u)) continue;
+        if (cdn) {
+          u = u.replace(/^(https?:\/\/)[^/]+/, `$1${cdn}`);
+        }
+        if (!seen.has(u)) {
+          seen.add(u);
+          images.push(u);
+        }
+      }
       if (images.length === 0) throw "No images found";
       return { images };
     },
