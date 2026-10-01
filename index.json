@@ -16,8 +16,8 @@
         "name": "包子漫画",
         "fileName": "baozi.js",
         "key": "baozi",
-        "version": "1.2.3",
-        "description": "适配2026新版网站, 图片走App专用端点绕过引流图替换; 若显示二维码请清除App图片缓存"
+        "version": "1.2.4",
+        "description": "适配appcn新版Nuxt页面(图片列表在data-src); 封面改走s.baozicdn.com绕CF; 若显示二维码请清除App图片缓存"
     },
     {
         "name": "Picacg",
